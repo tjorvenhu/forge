@@ -217,12 +217,6 @@ export const views: typeof De = {
     autoContinueLabel: "Continue after usage limit",
     autoContinueDescription:
       "If the limit stops a session, FORGE sends a message itself after the reset. At most three times without your input, and only while FORGE is running.",
-    agentTeamsLabel: "Agent teams",
-    teamModelsLabel: "Models of the team roles",
-    teamModelsDescription: "Default for new teams. Expensive models pay off where judgment matters; the lead may still pick another model for single packages.",
-    teamModelsReset: "Reset to defaults",
-    agentTeamsDescription:
-      "A lead plans a goal and hands the work to members with fixed roles and a fitting model (Haiku reads code, Sonnet implements, Opus reviews). Uses considerably more of the plan than a single session. Each project can switch it off again in its project settings.",
     uiCompareLabel: "Before and after images for UI changes",
     uiCompareDescription:
       "If Claude changes files like .tsx or .css while the dev server is running, the chat shows screenshots of the web app from before and after the run. The images are not sent to Claude and are deleted after 14 days.",

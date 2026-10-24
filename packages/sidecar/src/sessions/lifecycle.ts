@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { ForgeError, type Attachment, type EffortLevel, type Session, type TeamRoleModels } from "@forge/protocol";
+import { ForgeError, type Attachment, type EffortLevel, type Session } from "@forge/protocol";
 import { fallbackFor, type ClaudeRuntime, type OutgoingMessage, type RuntimeSession, type SessionSink, type SessionTool } from "../claude/runtime.js";
 import { Normalizer } from "../claude/normalize.js";
 import { locateClaude, sessionEnv } from "../claude/environment.js";
@@ -16,7 +16,6 @@ import type { SessionStream } from "./stream.js";
 import type { TurnAutomation } from "./turn-automation.js";
 import type { BuiltTurn, MessageSource, TaskTurn, TurnDispatch } from "./turns.js";
 import { tr } from "../i18n/index.js";
-import { teamAgents, teamLeadContext } from "../teams/team-agents.js";
 
 export interface StartParams {
   projectId: string;
@@ -26,10 +25,6 @@ export interface StartParams {
   planOnly?: boolean;
   resumeClaudeSessionId?: string;
   attachments?: Attachment[];
-  /** an agent team: the lead gets the team roles and the orchestration rules (teams/team-agents.ts) */
-  team?: boolean;
-  /** agent team: models of its roles where they differ from the defaults */
-  teamModels?: TeamRoleModels;
 }
 
 export interface LifecycleParts {
@@ -112,7 +107,6 @@ export class SessionLifecycle {
       createdAt: now,
       updatedAt: now,
       lastError: null,
-      ...(params.team ? { team: true, ...(params.teamModels && Object.keys(params.teamModels).length ? { teamModels: params.teamModels } : {}) } : {}),
     };
     db.insertSession(rec);
 
@@ -253,8 +247,7 @@ export class SessionLifecycle {
           firstMessage: first,
           fallbackModel: fallbackFor(rec.model),
           tools: extra?.tools,
-          context: rec.team ? [extra?.context, teamLeadContext(rec.teamModels)].filter(Boolean).join("\n\n") : (extra?.context ?? null),
-          ...(rec.team ? { agents: teamAgents(rec.teamModels) } : {}),
+          context: extra?.context ?? null,
         },
         sink,
       );

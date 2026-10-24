@@ -24,7 +24,6 @@ const project = {
   parentId: null,
   gitEnabled: true,
   agentsEnabled: true,
-  teamsEnabled: true,
   group: null,
   exists: true,
   profile: "balanced",

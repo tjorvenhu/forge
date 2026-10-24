@@ -1,4 +1,4 @@
-import { BackupPart, CHAT_WINDOW_ACTIONS, EffortLevel, Language, MemoryScope, PermissionMode, PolicyRuleId, ProfileId, SessionStatus, TEAM_LEAD_MODELS, UpdateChannel, type ChatWindowAction, type TeamLeadModel } from "@forge/protocol";
+import { BackupPart, CHAT_WINDOW_ACTIONS, EffortLevel, Language, MemoryScope, PermissionMode, PolicyRuleId, ProfileId, SessionStatus, UpdateChannel, type ChatWindowAction } from "@forge/protocol";
 import { z } from "zod";
 import { tr, type SidecarMessages } from "../i18n/index.js";
 
@@ -49,16 +49,6 @@ export const GIT_ACTIONS = [
 ] as const;
 export type GitAction = (typeof GIT_ACTIONS)[number];
 export type TaskAction = "output" | "stop" | "to_background" | "message";
-export const AGENT_TEAM_ACTIONS = ["status", "message", "start", "stop"] as const;
-export type AgentTeamAction = (typeof AGENT_TEAM_ACTIONS)[number];
-export interface AgentTeamOptions {
-  project?: string;
-  team?: string;
-  text?: string;
-  leadModel?: TeamLeadModel;
-  /** at start: role models for this team, as text like forge_settings team_models */
-  models?: string;
-}
 export const CREW_ACTIONS = [
   "status",
   "create",
@@ -100,8 +90,6 @@ export interface CrewOptions {
   name?: string;
   acceptTasks?: (typeof CREW_ACCEPT_TASKS)[number];
   autoPull?: boolean;
-  /** task_start: an agent team works on it */
-  team?: boolean;
   /** session_view, session_takeover: title (or part of it) of the member's session */
   session?: string;
   /** session_answer: allow every later request of this crew without asking */
@@ -170,8 +158,6 @@ export interface ProjectOptions extends TargetOptions {
   git?: boolean;
   /** settings: false switches parallel agents off for the project, true allows them again */
   agents?: boolean;
-  /** settings: false switches Claude Code's agent teams off for the project, true allows them again */
-  teams?: boolean;
   /** create and import: also a GitHub repository */
   github?: "private" | "public";
   /** create and import with github: GitHub organisation instead of the personal account, as spoken */
@@ -291,10 +277,6 @@ export interface ForgeSettingsPatch {
   learnTemplates?: boolean;
   /** closing FORGE asks to commit and push what is not on GitHub */
   askPushOnClose?: boolean;
-  /** agent teams (a lead orchestrates members with their own models) */
-  agentTeams?: boolean;
-  /** models of the team roles for new teams, as text ("reviewer=sonnet, specialist=fable"; "standard" resets a role) */
-  teamRoleModels?: string;
   /** anonymous usage totals every 5 minutes */
   usageStats?: boolean;
   policyRule?: PolicyRuleId;
@@ -405,8 +387,6 @@ export interface PhoneToolset {
   removeAgent(project: string, o?: TargetOptions & { deleteBranch?: boolean; force?: boolean }): Promise<string>;
   /** merges an agent's branch into the branch it started from, or discards it (worktree and branch go either way); review tells what it did */
   finishAgent(project: string, action: "merge" | "discard" | "review", o?: TargetOptions): Promise<string>;
-  /** Claude Code agent teams: status of the running ones, a message to a member, or a new team lead in a terminal tab */
-  agentTeam(action: AgentTeamAction, o: AgentTeamOptions): Promise<string>;
   /** crews: live collaboration with other FORGE installations on one project */
   crew(action: CrewAction, o: CrewOptions): Promise<string>;
   projects(): Promise<string>;
@@ -781,19 +761,6 @@ const TOOL_DEFS: readonly ToolDef[] = [
     run: (t, a) => t.finishAgent(str(a.project), a.action === "discard" ? "discard" : a.action === "review" ? "review" : "merge", { session: opt(a.session) }),
   },
   {
-    name: "agent_team",
-    params: {
-      action: { type: "string", enum: AGENT_TEAM_ACTIONS },
-      project: { type: "string", optional: true },
-      team: { type: "string", optional: true },
-      text: { type: "string", optional: true },
-      lead_model: { type: "string", optional: true, enum: TEAM_LEAD_MODELS },
-      models: { type: "string", optional: true },
-    },
-    run: (t, a) =>
-      t.agentTeam(pick(a.action, AGENT_TEAM_ACTIONS, "status"), { project: opt(a.project), team: opt(a.team), text: opt(a.text), leadModel: TEAM_LEAD_MODELS.find((m) => m === a.lead_model), models: opt(a.models) }),
-  },
-  {
     name: "crew",
     params: {
       action: { type: "string", enum: CREW_ACTIONS },
@@ -810,14 +777,12 @@ const TOOL_DEFS: readonly ToolDef[] = [
       name: { type: "string", optional: true },
       accept_tasks: { type: "string", optional: true, enum: CREW_ACCEPT_TASKS },
       auto_pull: { type: "boolean", optional: true },
-      team: { type: "boolean", optional: true },
       session: { type: "string", optional: true },
       always: { type: "boolean", optional: true },
       share_sessions: { type: "string", optional: true, enum: ["ask", "auto", "off"] },
     },
     run: (t, a) =>
       t.crew(pick(a.action, CREW_ACTIONS, "status"), {
-        team: optBool(a.team),
         session: opt(a.session),
         always: optBool(a.always),
         shareSessions: (["ask", "auto", "off"] as const).find((x) => x === a.share_sessions),
@@ -852,7 +817,6 @@ const TOOL_DEFS: readonly ToolDef[] = [
       url: { type: "string", optional: true },
       git: { type: "boolean", optional: true },
       agents: { type: "boolean", optional: true },
-      teams: { type: "boolean", optional: true },
       github: { type: "string", optional: true, enum: ["private", "public"] },
       owner: { type: "string", optional: true },
       delete_folder: { type: "boolean", optional: true },
@@ -873,7 +837,6 @@ const TOOL_DEFS: readonly ToolDef[] = [
         url: opt(a.url),
         git: optBool(a.git),
         agents: optBool(a.agents),
-        teams: optBool(a.teams),
         github: a.github === "private" || a.github === "public" ? a.github : undefined,
         owner: opt(a.owner),
         deleteFolder: optBool(a.delete_folder),
@@ -1006,8 +969,6 @@ const TOOL_DEFS: readonly ToolDef[] = [
       ui_compare: { type: "boolean", optional: true },
       learn_templates: { type: "boolean", optional: true },
       ask_push_on_close: { type: "boolean", optional: true },
-      agent_teams: { type: "boolean", optional: true },
-      team_models: { type: "string", optional: true },
       usage_stats: { type: "boolean", optional: true },
       language: { type: "string", optional: true, enum: Language.options },
       policy_rule: { type: "string", optional: true, enum: PolicyRuleId.options },
@@ -1033,8 +994,6 @@ const TOOL_DEFS: readonly ToolDef[] = [
         uiCompare: optBool(a.ui_compare),
         learnTemplates: optBool(a.learn_templates),
         askPushOnClose: optBool(a.ask_push_on_close),
-        agentTeams: optBool(a.agent_teams),
-        teamRoleModels: opt(a.team_models),
         usageStats: optBool(a.usage_stats),
         language: Language.options.find((x) => x === a.language),
         policyRule: PolicyRuleId.options.find((x) => x === a.policy_rule),

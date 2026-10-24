@@ -1,7 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { SessionTotals, UsageCall } from "../claude/session-usage.js";
 import type { UsageSample } from "../claude/usage-forecast.js";
-import { CrewMirror, DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, TeamRoleModels, type ContextUsage, type EffortLevel, type ModelTokens, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchFilter, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
+import { CrewMirror, DEFAULT_DISABLED_POLICY_RULES, SEARCH_MARK_END, SEARCH_MARK_START, type ContextUsage, type EffortLevel, type ModelTokens, type ForgeUsagePurpose, type PermissionMode, type ProfileId, type Project, type PhoneCallRecord, type PromptTemplate, type SearchFilter, type SearchHit, type Session, type SessionEvent, type SessionEventBody, type SessionStatus, type Settings } from "@forge/protocol";
 
 // Append only: an install stores how many it ran (user_version), so inserting one shifts the rest.
 export const MIGRATIONS: string[] = [
@@ -361,15 +361,15 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE projects ADD COLUMN agents_enabled INTEGER NOT NULL DEFAULT 1;
   `,
-  // Projects without Claude Code agent teams: no team terminal, no team view.
+  // Projects without Claude Code agent teams (the feature lives in branch experimental; unused on dev).
   `
   ALTER TABLE projects ADD COLUMN teams_enabled INTEGER NOT NULL DEFAULT 1;
   `,
-  // Agent team sessions: the lead gets the team roles (subagents with their own models) and the orchestration rules.
+  // Agent team sessions (branch experimental; unused on dev).
   `
   ALTER TABLE sessions ADD COLUMN team INTEGER NOT NULL DEFAULT 0;
   `,
-  // Models of an agent team's roles where they differ from the defaults (JSON), fixed when it starts.
+  // Models of an agent team's roles (branch experimental; unused on dev).
   `
   ALTER TABLE sessions ADD COLUMN team_models TEXT;
   `,
@@ -474,8 +474,6 @@ export const DEFAULT_SETTINGS: Settings = {
   uiCompare: true,
   learnTemplates: true,
   askPushOnClose: true,
-  agentTeams: false,
-  teamRoleModels: {},
   disabledPolicyRules: [...DEFAULT_DISABLED_POLICY_RULES],
   setupDone: false,
   syncEnabled: false,
@@ -510,7 +508,6 @@ interface ProjectRow {
   parent_id: string | null;
   git_enabled: number;
   agents_enabled: number;
-  teams_enabled: number;
 }
 
 interface SessionRow {
@@ -528,8 +525,6 @@ interface SessionRow {
   created_at: string;
   updated_at: string;
   last_error: string | null;
-  team: number;
-  team_models: string | null;
   crew_mirror: string | null;
 }
 
@@ -710,7 +705,6 @@ function toProject(r: ProjectRow): ProjectRecord {
     parentId: r.parent_id,
     gitEnabled: r.git_enabled !== 0,
     agentsEnabled: r.agents_enabled !== 0,
-    teamsEnabled: r.teams_enabled !== 0,
   };
 }
 
@@ -718,16 +712,6 @@ function parseMirror(raw: string): { mirror?: CrewMirror } {
   try {
     const r = CrewMirror.safeParse(JSON.parse(raw));
     return r.success ? { mirror: r.data } : {};
-  } catch {
-    return {};
-  }
-}
-
-/** A broken or outdated entry falls back to the defaults instead of breaking the session. */
-function parseTeamModels(raw: string): TeamRoleModels {
-  try {
-    const r = TeamRoleModels.safeParse(JSON.parse(raw));
-    return r.success ? r.data : {};
   } catch {
     return {};
   }
@@ -749,8 +733,6 @@ function toSession(r: SessionRow): SessionRecord {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     lastError: r.last_error,
-    ...(r.team ? { team: true } : {}),
-    ...(r.team_models ? { teamModels: parseTeamModels(r.team_models) } : {}),
     ...(r.crew_mirror ? parseMirror(r.crew_mirror) : {}),
   };
 }
@@ -926,8 +908,8 @@ export class Db {
   insertProject(p: ProjectRecord, pathKey: string, restored = false) {
     this.sql
       .prepare(
-        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id, git_enabled, group_name, agents_enabled, teams_enabled)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects(id, name, path, path_key, favorite, tags, technologies, profile, default_model, default_effort, created_at, last_opened_at, test_command, dev_command, parent_id, git_enabled, group_name, agents_enabled)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.id,
@@ -948,7 +930,6 @@ export class Db {
         p.gitEnabled ? 1 : 0,
         p.group,
         p.agentsEnabled ? 1 : 0,
-        p.teamsEnabled ? 1 : 0,
       );
     // Agent worktrees are projects too, but they count as agents.
     if (!p.parentId && !restored) this.bumpCounter("projectsCreated");
@@ -1012,7 +993,6 @@ export class Db {
     if (patch.devCommand !== undefined) cols.dev_command = patch.devCommand;
     if (patch.gitEnabled !== undefined) cols.git_enabled = patch.gitEnabled ? 1 : 0;
     if (patch.agentsEnabled !== undefined) cols.agents_enabled = patch.agentsEnabled ? 1 : 0;
-    if (patch.teamsEnabled !== undefined) cols.teams_enabled = patch.teamsEnabled ? 1 : 0;
     if (patch.group !== undefined) cols.group_name = patch.group;
     const keys = Object.keys(cols);
     if (!keys.length) return;
@@ -1060,8 +1040,8 @@ export class Db {
   insertSession(s: SessionRecord) {
     this.sql
       .prepare(
-        `INSERT INTO sessions(id, project_id, claude_session_id, cwd, title, model, effort, profile, permission_mode, status, api_key_source, created_at, updated_at, last_error, team, team_models, crew_mirror)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions(id, project_id, claude_session_id, cwd, title, model, effort, profile, permission_mode, status, api_key_source, created_at, updated_at, last_error, crew_mirror)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         s.id,
@@ -1078,8 +1058,6 @@ export class Db {
         s.createdAt,
         s.updatedAt,
         s.lastError,
-        s.team ? 1 : 0,
-        s.teamModels && Object.keys(s.teamModels).length ? JSON.stringify(s.teamModels) : null,
         s.mirror ? JSON.stringify(s.mirror) : null,
       );
   }
@@ -1157,13 +1135,6 @@ export class Db {
     const rows = this.sql
       .prepare("SELECT * FROM sessions WHERE project_id = ? ORDER BY updated_at DESC")
       .all(projectId) as unknown as SessionRow[];
-    return rows.map(toSession);
-  }
-
-  /** agent team sessions, newest first; projectIds: only those projects */
-  listTeamSessions(projectIds: readonly string[] | null, limit: number): SessionRecord[] {
-    const where = projectIds ? ` AND project_id IN (${projectIds.map(() => "?").join(", ") || "NULL"})` : "";
-    const rows = this.sql.prepare(`SELECT * FROM sessions WHERE team = 1 AND crew_mirror IS NULL${where} ORDER BY created_at DESC LIMIT ?`).all(...(projectIds ?? []), limit) as unknown as SessionRow[];
     return rows.map(toSession);
   }
 

@@ -49,8 +49,7 @@ import {
   type CrewTaskStatus,
   type Project,
 } from "@forge/protocol";
-import { call, keys, useCrew, useProjects } from "@/lib/queries";
-import { useTeamsAllowed } from "@/lib/agent-teams";
+import { call, keys, useCrew } from "@/lib/queries";
 import { errorMessage } from "@/lib/rpc";
 import { contextItems, copyText } from "@/lib/context-menu";
 import { askShare, crewChanged, memberName, openCrew, openShared, pullCrew, respondCrew, respondShare, startCrewTask, stopShare } from "@/lib/crew";
@@ -702,8 +701,8 @@ function AgentRow({ crew, member, agent: a }: { crew: Crew; member: CrewMember; 
     <li className="group/agent rounded-md px-1.5 py-1 hover:bg-surface-3/50" onContextMenu={contextItems(items)}>
       <div className="flex items-center gap-1.5 text-caption-lg">
         <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", STATUS_DOT[a.status])} aria-hidden />
-        {a.team ? <Users className="h-3 w-3 shrink-0 text-accent" aria-label={m.team} /> : <Bot className="h-3 w-3 shrink-0 text-muted" />}
-        <span className="min-w-0 flex-1 truncate font-medium text-fg" title={a.team ? `${m.team}: ${a.title}` : a.title}>
+        <Bot className="h-3 w-3 shrink-0 text-muted" />
+        <span className="min-w-0 flex-1 truncate font-medium text-fg" title={a.title}>
           {a.title}
         </span>
         {canShare ? (
@@ -716,7 +715,7 @@ function AgentRow({ crew, member, agent: a }: { crew: Crew; member: CrewMember; 
             </button>
           </span>
         ) : null}
-        <span className="shrink-0 text-caption text-subtle group-hover/agent:hidden">{a.team && a.team.working > 0 ? m.teamWorking(a.team.working) : m.agentStatus[a.status]}</span>
+        <span className="shrink-0 text-caption text-subtle group-hover/agent:hidden">{m.agentStatus[a.status]}</span>
       </div>
       {a.task && (
         <p className="ml-3 mt-0.5 line-clamp-1 text-caption text-muted" title={a.task}>
@@ -863,17 +862,14 @@ function TaskCard({ crew, task, onEdit }: { crew: Crew; task: CrewTask; onEdit: 
       await call("crew.taskRemove", { crewId: crew.id, taskId: task.id });
       toast.success(m.taskDeleted);
     });
-  const project = useProjects().data?.find((p) => p.id === crew.projectId) ?? null;
-  const teams = useTeamsAllowed(project);
-  const start = async (team = false) => {
+  const start = async () => {
     setBusy(true);
-    await startCrewTask(qc, crew, task.id, team);
+    await startCrewTask(qc, crew, task.id);
     setBusy(false);
   };
   const forOther = task.assignee && task.assignee !== crew.selfId;
   const items = (): MenuItem[] => [
     ...(task.status === "open" ? [{ label: m.start, icon: <Play className={ic} />, onSelect: () => void start(), hint: forOther ? m.forMember(memberName(crew, task.assignee)) : undefined }] : []),
-    ...(task.status === "open" && teams.allowed ? [{ label: m.startTeam, icon: <Users className={ic} />, onSelect: () => void start(true), hint: m.startTeamHint }] : []),
     ...(task.status === "open" ? [{ label: m.take, icon: <Hand className={ic} />, onSelect: () => setStatus("in_progress") }] : []),
     ...(task.status !== "done" ? [{ label: m.markDone, icon: <Check className={ic} />, onSelect: () => setStatus("done") }] : []),
     ...(task.status !== "open" ? [{ label: m.reopen, icon: <RotateCcw className={ic} />, onSelect: () => setStatus("open") }] : []),
@@ -920,16 +916,9 @@ function TaskCard({ crew, task, onEdit }: { crew: Crew; task: CrewTask; onEdit: 
       </div>
       {task.note && <p className="mt-1 line-clamp-3 text-muted">→ {task.note}</p>}
       {task.status === "open" && (
-        <div className="mt-2 flex gap-1.5">
-          <Button size="sm" variant="outline" className="h-6 flex-1 text-[11px]" loading={busy} onClick={() => void start()}>
-            <Play className="h-3 w-3" /> {m.start}
-          </Button>
-          {teams.allowed && (
-            <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" disabled={busy} title={`${m.startTeam} (${m.startTeamHint})`} aria-label={m.startTeam} onClick={() => void start(true)}>
-              <Users className="h-3 w-3" />
-            </Button>
-          )}
-        </div>
+        <Button size="sm" variant="outline" className="mt-2 h-6 w-full text-[11px]" loading={busy} onClick={() => void start()}>
+          <Play className="h-3 w-3" /> {m.start}
+        </Button>
       )}
     </div>
   );

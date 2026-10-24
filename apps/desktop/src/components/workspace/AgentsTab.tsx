@@ -22,7 +22,6 @@ import { SessionStatusBadge } from "./SessionStatusBadge";
 import { Skeleton, SkeletonRegion } from "@/components/ui/skeleton";
 import { t } from "@/i18n";
 import { AgentEnvironment } from "./AgentEnvironment";
-import { AgentTeamsSection } from "./AgentTeams";
 
 /**
  * Parallel agents of the open project: each runs in its own git worktree (separate folder and
@@ -89,7 +88,6 @@ export function AgentsTab({ project }: { project: ProjectWithStatus }) {
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="flex max-w-5xl flex-col gap-6">
-        <AgentTeamsSection project={project} />
         <section>
           <SectionTitle
             action={

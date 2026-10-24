@@ -8,7 +8,6 @@ import { knowledge } from "./core/knowledge.js";
 import { preview } from "./core/preview.js";
 import { reports } from "./core/reports.js";
 import { sessions } from "./core/sessions.js";
-import { teams } from "./core/teams.js";
 import { templates } from "./core/templates.js";
 
-export const core: typeof De = { app, automation, claude, crew, forgeTools, knowledge, preview, reports, sessions, teams, templates };
+export const core: typeof De = { app, automation, claude, crew, forgeTools, knowledge, preview, reports, sessions, templates };

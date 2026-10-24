@@ -178,20 +178,8 @@ export const phoneTools: typeof De = {
       action: "review: check; merge: merge; discard: throw away, only if the caller explicitly wants it",
     },
   },
-  agent_team: {
-    description:
-      "FORGE agent teams: a lead (a stronger model) plans a goal, hands packages of work to members with roles and a fitting model (scout on Haiku reads code, developer and tester on Sonnet, specialist and reviewer on Opus), runs independent packages in parallel and checks the result. Uses considerably more of the plan than a session; tell the caller before start. status: teams with plan, members, their model and what they are doing (without team the working ones, else the newest). message: a message to the lead, it passes it on. start: a new team in the project with text as its goal. status names members waiting for an approval; answer them with respond in the team's session. Checks (tests, lint, type checks, reading commands) run without asking in the Balanced profile. stop: stops every working member and the lead; ask the caller first, unfinished work is cut off.",
-    params: {
-      action: "status, message, start or stop",
-      project: "project name; optional for status (else all projects), needed for start",
-      team: "title (or part of it) of the team from status; without it the working or newest one",
-      text: "for message the message to the lead, for start the goal, fully worded",
-      lead_model: "for start: the lead's model, opus (default), fable (strongest, most expensive) or sonnet (cheaper)",
-      models: "for start: models of single roles for this team only, e.g. reviewer=sonnet, specialist=fable; else the settings apply",
-    },
-  },
   crew: {
-    description: "Crew: live collaboration of several FORGE users on the same project, each on their own computer; their agents know about each other. status: members (online, what their agents work on, unpushed files), shared tasks, open join requests and the latest events; without project all crews. create: new crew for project (name optional), the invite code shows up in FORGE in the Crew tab. invite: new invite code (the old one stops working), also only visible in FORGE. message: message text to the crew or with to to one member. task_add: task title (detail, assignee optional). task_take, task_done, task_release, task_update, task_remove: take task, mark it done (note as the result), release it, change it, delete it. task_start: a new session here works on task, with team true an agent team (only when agent teams are on; uses considerably more). session_view: watch a session of member to (session: its title or part of it) live and read-only. session_takeover: take it over; you get the history, Claude's conversation and the files in a worktree of your own and go on there. Both ask the member first (depending on its setting). session_answer: allow a request for one of your sessions (accept true, always true for good) or decline it; to picks the request. respond: accept (accept true) or decline the join request request; check the check code with the caller first. pull: take over the commits the others pushed. settings: crew name name, accept_tasks (auto, ask, off: what happens with tasks others give you) and auto_pull. profile: own display name name in all crews; without name only read it. leave: leave the crew. remove_member: remove member to (only whoever started the crew). Joining works only at the computer (the invite code is too long to dictate).",
+    description: "Crew: live collaboration of several FORGE users on the same project, each on their own computer; their agents know about each other. status: members (online, what their agents work on, unpushed files), shared tasks, open join requests and the latest events; without project all crews. create: new crew for project (name optional), the invite code shows up in FORGE in the Crew tab. invite: new invite code (the old one stops working), also only visible in FORGE. message: message text to the crew or with to to one member. task_add: task title (detail, assignee optional). task_take, task_done, task_release, task_update, task_remove: take task, mark it done (note as the result), release it, change it, delete it. task_start: a new session here works on task. session_view: watch a session of member to (session: its title or part of it) live and read-only. session_takeover: take it over; you get the history, Claude's conversation and the files in a worktree of your own and go on there. Both ask the member first (depending on its setting). session_answer: allow a request for one of your sessions (accept true, always true for good) or decline it; to picks the request. respond: accept (accept true) or decline the join request request; check the check code with the caller first. pull: take over the commits the others pushed. settings: crew name name, accept_tasks (auto, ask, off: what happens with tasks others give you) and auto_pull. profile: own display name name in all crews; without name only read it. leave: leave the crew. remove_member: remove member to (only whoever started the crew). Joining works only at the computer (the invite code is too long to dictate).",
     params: {
       action: "status, create, invite, message, task_add, task_take, task_done, task_release, task_update, task_remove, task_start, session_view, session_takeover, session_answer, respond, pull, settings, profile, leave or remove_member",
       project: "project name; only needed when there are several crews, always for create",
@@ -207,7 +195,6 @@ export const phoneTools: typeof De = {
       name: "for create and settings the crew name, for profile your own display name",
       accept_tasks: "for settings: auto starts an agent for tasks from others, ask asks, off only lists them",
       auto_pull: "for settings: true takes over the commits the others push on its own while no session works",
-      team: "for task_start: true has an agent team work on the task instead of a session",
       session: "for session_view and session_takeover: title (or part of it) of the session of member to",
       always: "for session_answer: true also allows every later request of this crew without asking",
       share_sessions: "for settings: when others want one of your sessions: ask (ask first), auto (always allow), off (never)",
@@ -218,7 +205,7 @@ export const phoneTools: typeof De = {
   },
   project: {
     description:
-      "Manages projects. info: profile, default model, thinking effort, test and dev command, favorite, whether with Git and whether parallel agents are allowed. create: create a new project name (in path or in the projects folder from the settings), optionally with a GitHub repository right away (also in an organization) or without Git at all. import: add an existing folder path, with or without Git, optionally with a GitHub repository right away. clone: clone repository url, also by the name of a GitHub repository of the account. remove: remove the project from FORGE; folder and GitHub repository only with delete_folder or delete_github_repo. rename: new name. favorite: mark as favorite or not. group: put the project into the group group (for example by client), without group take it out of its group. rename_group: rename group group to name, for all its projects. dissolve_group: dissolve group group, the projects stay. settings: set profile, default model, thinking effort, test and dev command, switch Git on or off, allow or switch off parallel agents and agent teams; only give what should change.",
+      "Manages projects. info: profile, default model, thinking effort, test and dev command, favorite, whether with Git and whether parallel agents are allowed. create: create a new project name (in path or in the projects folder from the settings), optionally with a GitHub repository right away (also in an organization) or without Git at all. import: add an existing folder path, with or without Git, optionally with a GitHub repository right away. clone: clone repository url, also by the name of a GitHub repository of the account. remove: remove the project from FORGE; folder and GitHub repository only with delete_folder or delete_github_repo. rename: new name. favorite: mark as favorite or not. group: put the project into the group group (for example by client), without group take it out of its group. rename_group: rename group group to name, for all its projects. dissolve_group: dissolve group group, the projects stay. settings: set profile, default model, thinking effort, test and dev command, switch Git on or off and allow or switch off parallel agents; only give what should change.",
     params: {
       project: "Project name or part of it; not for create, import and clone",
       name: "create: name of the new project; rename: the new name; rename_group: new name of the group; clone: folder name",
@@ -227,7 +214,6 @@ export const phoneTools: typeof De = {
       git: "create and import: false sets the project up without Git at all (no Git areas, no agents, Claude does not use Git), but a folder with .git is always added with Git; settings: true switches Git on, false off",
       agents:
         "settings: false switches parallel agents off for the project, true allows them again. Before switching off, tell the caller that Claude then works less efficiently: tasks run one after another instead of at the same time",
-      teams: "settings: false switches Claude Code's agent teams off for the project (no team terminal, no team view), true allows them again",
       github: "create and import: also create a GitHub repository, private or public",
       owner: "create and import with github: GitHub organization the repository is created in; without: personal account",
       delete_folder: "remove: true also deletes the folder; only if the caller explicitly wants it, they have to confirm it on the keypad afterwards",
@@ -319,8 +305,6 @@ export const phoneTools: typeof De = {
       ui_compare: "Before and after images of the web app when Claude changes UI files and a dev server is running",
       learn_templates: "FORGE turns tasks the caller sends again and again into prompt templates on its own",
       ask_push_on_close: "when FORGE closes, ask whether everything not pushed yet should be committed and pushed",
-      agent_teams: "agent teams in all projects (a lead hands work to members on their own models); false switches them off everywhere",
-      team_models: "models of the team roles for new teams, e.g. reviewer=sonnet, specialist=fable; roles scout, developer, specialist, tester, reviewer; models haiku, sonnet, opus, fable; default resets a role",
       usage_stats:
         "Anonymous usage statistics: every 5 minutes totals like tokens, projects and agents, without content, to FORGE's statistics service; off deletes the data sent there",
       language: "Language of FORGE for the interface, messages and the phone: en English, de German. Afterwards you speak the new language",

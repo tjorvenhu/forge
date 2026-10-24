@@ -92,18 +92,6 @@ export const projects: typeof De = {
     menuOff: "Switch off parallel agents",
     menuOn: "Allow parallel agents",
   },
-  teams: {
-    title: "Agent teams",
-    switchLabel: "Allow agent teams",
-    onDescription: "An agent team can be started from the Agents tab. Every member is a Claude instance of its own and uses its own share of the plan.",
-    offDescription: "FORGE starts no agent teams in this project and shows none.",
-    globalOff: "Agent teams are switched off in the settings. Switch them on there first.",
-    openSettings: "Go to the settings",
-    turnedOff: "Agent teams switched off",
-    turnedOn: "Agent teams allowed",
-    menuOff: "Switch off agent teams",
-    menuOn: "Allow agent teams",
-  },
   card: {
     favoriteNotSaved: "Favorite could not be saved",
     newSession: "New session",

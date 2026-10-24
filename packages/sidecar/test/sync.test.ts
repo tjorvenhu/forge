@@ -95,7 +95,6 @@ function project(dir: string, patch: Partial<Project> = {}): Project {
     parentId: null,
     gitEnabled: true,
     agentsEnabled: true,
-    teamsEnabled: true,
     group: null,
     exists: true,
     ...patch,

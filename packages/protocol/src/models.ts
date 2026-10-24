@@ -55,18 +55,6 @@ export const GitSummary = z.object({
 export type GitSummary = z.infer<typeof GitSummary>;
 
 export const EffortLevel = z.enum(["low", "medium", "high", "xhigh", "max"]);
-
-/** Roles of an agent team (team.ts); here because sessions and settings name them. */
-export const TEAM_ROLES = ["scout", "developer", "specialist", "tester", "reviewer"] as const;
-export const TeamRole = z.enum(TEAM_ROLES);
-export type TeamRole = z.infer<typeof TeamRole>;
-/** model families a team role can run on; Claude Code resolves the alias to the newest model */
-export const TEAM_MODEL_FAMILIES = ["haiku", "sonnet", "opus", "fable"] as const;
-export const TeamModelFamily = z.enum(TEAM_MODEL_FAMILIES);
-export type TeamModelFamily = z.infer<typeof TeamModelFamily>;
-/** model per role where it differs from the default (TEAM_ROLE_SPECS) */
-export const TeamRoleModels = z.partialRecord(TeamRole, TeamModelFamily);
-export type TeamRoleModels = z.infer<typeof TeamRoleModels>;
 export type EffortLevel = z.infer<typeof EffortLevel>;
 
 export const Project = z.object({
@@ -95,8 +83,6 @@ export const Project = z.object({
   gitEnabled: z.boolean(),
   /** false: no parallel agents (worktrees) in this project; only main projects, worktrees follow their project */
   agentsEnabled: z.boolean(),
-  /** false: no Claude Code agent teams in this project; only main projects, worktrees follow their project */
-  teamsEnabled: z.boolean(),
   /** false when the folder no longer exists on disk */
   exists: z.boolean(),
 });
@@ -217,10 +203,6 @@ export const Session = z.object({
   context: ContextUsage.nullable(),
   /** when FORGE continues the session on its own after a usage limit (ISO); null when nothing is planned */
   autoContinueAt: z.string().nullable(),
-  /** agent team: the lead orchestrates subagents with their own models (team.ts); missing for plain sessions */
-  team: z.boolean().optional(),
-  /** agent team: the models its roles run on where they differ from the defaults, fixed at the start */
-  teamModels: TeamRoleModels.optional(),
   /** a crew member's session shown here read-only (crew.shareAsk view); missing for own sessions */
   mirror: CrewMirror.optional(),
 });
@@ -604,10 +586,6 @@ export const Settings = z.object({
   learnTemplates: z.boolean(),
   /** closing the main window asks to commit and push what is not on GitHub yet (git.unpushed) */
   askPushOnClose: z.boolean(),
-  /** Claude Code's agent teams (team terminal, team view); off hides them everywhere */
-  agentTeams: z.boolean(),
-  /** models of the team roles for new teams, where they differ from the defaults */
-  teamRoleModels: TeamRoleModels.optional(),
   /** blocklist rules the user switched off; every other rule applies */
   disabledPolicyRules: z.array(PolicyRuleId),
   /** the setup assistant of the first start is done (or was skipped); installations from before it count as done */

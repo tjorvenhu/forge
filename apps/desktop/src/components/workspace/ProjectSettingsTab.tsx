@@ -19,7 +19,6 @@ import { Select } from "@/components/ui/select";
 import { PROFILE_IDS, PROFILE_INFO } from "@/components/projects/ProfileBadge";
 import { RemoveProjectDialog } from "@/components/projects/RemoveProjectDialog";
 import { switchProjectAgents } from "@/components/projects/AgentsSwitch";
-import { setProjectTeams } from "@/lib/agent-teams";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { Group, Row, SettingsLayout, SwitchRow, type SettingsSectionDef } from "@/components/settings/layout";
 import { effortOptions, fromChoice, modelOptions, toChoice } from "@/components/settings/model-options";
@@ -117,7 +116,6 @@ function GeneralSection({ project, update }: SectionProps) {
   const qc = useQueryClient();
   const settings = useSettings();
   const runtime = useRuntimeInfo();
-  const teamsGlobal = settings.data?.agentTeams === true;
   return (
     <>
       <Group title={m.projectTitle} description={m.projectDescription}>
@@ -182,30 +180,6 @@ function GeneralSection({ project, update }: SectionProps) {
             description={project.agentsEnabled ? t.projects.agents.allowedDescription : t.projects.agents.offDescription}
             checked={!project.agentsEnabled}
             onChange={(off) => switchProjectAgents(qc, project, !off)}
-          />
-        </Group>
-      )}
-
-      {!project.parentId && (
-        <Group title={t.projects.teams.title}>
-          <SwitchRow
-            label={t.projects.teams.switchLabel}
-            description={
-              !teamsGlobal ? (
-                <>
-                  {t.projects.teams.globalOff}{" "}
-                  <button className="text-accent underline" onClick={() => useUi.getState().openSettings("claude")}>
-                    {t.projects.teams.openSettings}
-                  </button>
-                </>
-              ) : project.teamsEnabled ? (
-                t.projects.teams.onDescription
-              ) : (
-                t.projects.teams.offDescription
-              )
-            }
-            checked={project.teamsEnabled}
-            onChange={(on) => void setProjectTeams(qc, project, on)}
           />
         </Group>
       )}

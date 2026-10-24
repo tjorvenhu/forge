@@ -10,7 +10,6 @@ import { redact } from "../policy/redact.js";
 import type { LiveSession } from "./live-session.js";
 import type { SessionCore } from "./session-core.js";
 import { tr } from "../i18n/index.js";
-import { isTeamCheckCommand } from "../teams/team-checks.js";
 
 /** Tools that ask the user something instead of doing something; answered in their own cards. */
 const QUESTION_TOOL = "AskUserQuestion";
@@ -84,7 +83,6 @@ export class ApprovalGate {
   }
 
   request(id: string, live: LiveSession, req: ApprovalRequest, signal: AbortSignal): Promise<ApprovalDecision> {
-    if (this.teamCheck(id, live, req)) return Promise.resolve({ behavior: "allow", scope: "once" });
     const allowSessionScope = live.profile.allowSessionScope && !req.suppressAlwaysAllow && !INTERACTIVE_TOOLS.has(req.toolName);
     const { input, truncated } = truncateInput(req.input);
     this.core.record(id, {
@@ -137,24 +135,6 @@ export class ApprovalGate {
       // With Remote Control the prompt may also have been answered in the Claude app.
       signal.addEventListener("abort", () => finish({ behavior: "deny", message: this.host.abortReason(id) }, "abort", "once"), { once: true });
     });
-  }
-
-  /**
-   * Agent teams in Balanced: tests, lint, type checks and reading commands run without a prompt
-   * (teams/team-checks.ts); with several members at work every test run would stall the team.
-   * Logged like every decision. Safe keeps asking.
-   */
-  private teamCheck(id: string, live: LiveSession, req: ApprovalRequest): boolean {
-    // Claude Code on Windows runs shell commands through its PowerShell tool as well.
-    if ((req.toolName !== "Bash" && req.toolName !== "PowerShell") || live.profile.id !== "balanced" || typeof req.input.command !== "string") return false;
-    const rec = this.core.db.getSession(id);
-    if (!rec?.team || !isTeamCheckCommand(req.input.command, this.core.db.getProject(rec.projectId)?.testCommand ?? null)) return false;
-    try {
-      this.core.db.recordApproval({ sessionId: id, requestId: req.requestId, toolName: req.toolName, input: redact(truncateInput(req.input).input), decision: "allow", scope: "once", source: "policy", reason: "team-check" });
-    } catch {
-      /* the check stands even if it could not be logged */
-    }
-    return true;
   }
 
   respond(sessionId: string, requestId: string, decision: "allow" | "deny", scope: "once" | "session", message?: string, answers?: Record<string, string>) {

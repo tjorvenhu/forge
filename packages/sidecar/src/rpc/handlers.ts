@@ -16,7 +16,6 @@ import type { WorktreeService } from "../automation/worktrees.js";
 import type { WorktreeSetup } from "../automation/worktree-setup.js";
 import type { AgentFinisher } from "../automation/agent-finish.js";
 import type { DailyReportService } from "../reports/daily-report.js";
-import type { AgentTeams } from "../teams/agent-teams.js";
 import type { CrewService } from "../crew/crew-service.js";
 import type { DevServerService } from "../devserver/dev-server.js";
 import type { DevToolsService } from "../devtools/dev-tools.js";
@@ -55,8 +54,6 @@ export interface Services {
   worktreeSetup: WorktreeSetup;
   agentFinish: AgentFinisher;
   reports: DailyReportService;
-  /** agent teams: sessions whose lead staffs subagents with roles and models */
-  teams: AgentTeams;
   /** live collaboration of several FORGE installations on one project */
   crew: CrewService;
   devServers: DevServerService;
@@ -205,11 +202,6 @@ export function createHandlers(s: Services): Handlers {
     "worktrees.prepare": ({ projectId }) => s.worktreeSetup.rerun(projectId),
     "agents.review": ({ projectId }) => s.agentFinish.review(projectId),
     "agents.finish": ({ projectId, action }) => s.agentFinish.finish(projectId, action),
-    "teams.list": ({ projectId }) => s.teams.list(projectId),
-    "teams.get": ({ sessionId }) => s.teams.get(sessionId),
-    "teams.start": ({ projectId, prompt, leadModel, roleModels }) => s.teams.start(projectId, prompt, leadModel, roleModels),
-    "teams.message": ({ sessionId, text }) => s.teams.message(sessionId, text),
-    "teams.stop": ({ sessionId }) => s.teams.stop(sessionId),
     "crew.list": ({ projectId }) => s.crew.list(projectId),
     "crew.profile": () => s.crew.profile(),
     "crew.setProfile": (patch) => s.crew.setProfile(patch),
@@ -228,7 +220,7 @@ export function createHandlers(s: Services): Handlers {
     "crew.taskAdd": ({ crewId, title, detail, assignee }) => s.crew.addTask(crewId, { title, detail, assignee: assignee ?? null }),
     "crew.taskUpdate": ({ crewId, taskId, ...patch }) => s.crew.updateTask(crewId, taskId, patch),
     "crew.taskRemove": ({ crewId, taskId }) => s.crew.removeTask(crewId, taskId),
-    "crew.taskStart": ({ crewId, taskId, team }) => s.crew.startTask(crewId, taskId, team),
+    "crew.taskStart": ({ crewId, taskId }) => s.crew.startTask(crewId, taskId),
     "crew.pull": ({ crewId }) => s.crew.pull(crewId),
     "sessions.summarize": ({ sessionId }) => s.sessions.summarize(sessionId),
     "sessions.handoff": ({ sessionId }) => s.sessions.handoff(sessionId),

@@ -108,7 +108,7 @@ export class Normalizer {
       const taskId = str(m.task_id) ?? "";
       const usage = (m.usage ?? null) as Record<string, unknown> | null;
       const call = this.taskCall(m).toolUseId;
-      // What a subagent used, foreground or background (agent teams show it per member).
+      // What a subagent used, foreground or background.
       const used: SessionEventBody[] =
         usage && call && typeof usage.total_tokens === "number"
           ? [{ type: "task.usage", toolUseId: call, tokens: usage.total_tokens, toolUses: num(usage.tool_uses) ?? 0, durationMs: num(usage.duration_ms) ?? 0 }]

@@ -58,7 +58,7 @@ export interface StartOptions {
   context?: string | null;
   /** model the CLI switches to when the main one is overloaded (must differ from it) */
   fallbackModel?: string | null;
-  /** subagents the session can start besides Claude Code's own (agent teams: one per role) */
+  /** subagents the session can start besides Claude Code's own */
   agents?: Record<string, AgentDefinition>;
 }
 

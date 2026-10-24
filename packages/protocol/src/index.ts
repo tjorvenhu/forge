@@ -7,5 +7,4 @@ export * from "./templates.js";
 export * from "./format.js";
 export * from "./support.js";
 export * from "./git-remote.js";
-export * from "./team.js";
 export * from "./crew.js";

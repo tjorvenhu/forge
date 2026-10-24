@@ -363,8 +363,6 @@ export function OpenSessions() {
                           {agent && <Bot aria-hidden className="h-3.5 w-3.5 shrink-0 text-accent" />}
                           {s.mirror ? (
                             <Eye aria-label={s.mirror.live ? t.crew.mirrorBadge(s.mirror.memberName) : t.crew.copyBadge(s.mirror.memberName)} className={cn("h-3.5 w-3.5 shrink-0", s.mirror.live ? "text-accent" : "text-subtle")} />
-                          ) : s.team ? (
-                            <Users aria-label={t.crew.team} className="h-3.5 w-3.5 shrink-0 text-accent" />
                           ) : null}
                           <span className={cn("truncate", !s.live && !s.mirror?.live && "italic")}>{title}</span>
                           {s.mirror?.live && <span className="shrink-0 rounded bg-accent/15 px-1 text-[10px] font-semibold uppercase text-accent">live</span>}

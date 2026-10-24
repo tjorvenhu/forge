@@ -116,7 +116,6 @@ export const system = {
     folderExists: (path: string) => `Ordner existiert bereits: ${path}`,
     duplicate: "Projekt ist bereits vorhanden.",
     worktreeAgents: "Parallele Agenten werden im Hauptprojekt erlaubt oder ausgeschaltet, nicht im Agent-Worktree.",
-    worktreeTeams: "Agent-Teams werden im Hauptprojekt erlaubt oder ausgeschaltet, nicht im Agent-Worktree.",
     worktreeNeedsGit: "Ein Agent-Worktree arbeitet immer mit Git.",
     groupNotFound: (name: string) => `Es gibt keine Gruppe ${name}.`,
     agentsBeforeGitOff: "Das Projekt hat noch Agenten. Erst die Agenten abschließen, dann Git ausschalten.",

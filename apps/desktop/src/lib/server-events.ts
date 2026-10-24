@@ -251,10 +251,6 @@ export function routeServerEvent(qc: QueryClient, git: GitRefresher, e: ServerEv
       qc.setQueryData(keys.uiCompare(e.payload.sessionId, e.payload.id), e.payload);
       void qc.invalidateQueries({ queryKey: ["uiCompareLatest"] });
       break;
-    case "teams.updated":
-      void qc.invalidateQueries({ queryKey: ["agentTeams"] });
-      void qc.invalidateQueries({ queryKey: keys.agentTeam(e.payload.sessionId) });
-      break;
     case "crew.updated":
       void qc.invalidateQueries({ queryKey: ["crews"] });
       break;

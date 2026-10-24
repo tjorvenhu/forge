@@ -117,7 +117,6 @@ export const system: typeof De = {
     folderExists: (path) => `Folder already exists: ${path}`,
     duplicate: "Project already exists.",
     worktreeAgents: "Parallel agents are allowed or switched off in the main project, not in an agent worktree.",
-    worktreeTeams: "Agent teams are allowed or switched off in the main project, not in an agent worktree.",
     worktreeNeedsGit: "An agent worktree always works with Git.",
     groupNotFound: (name) => `There is no group ${name}.`,
     agentsBeforeGitOff: "The project still has agents. Finish the agents first, then turn Git off.",

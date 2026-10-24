@@ -22,7 +22,7 @@ function project(id: string, dir: string): Project {
   return {
     id, name: id, path: dir, favorite: false, group: null, tags: [], technologies: [], profile: "balanced",
     defaultModel: null, defaultEffort: null, createdAt: "", lastOpenedAt: null, testCommand: null, devCommand: null,
-    parentId: null, gitEnabled: true, agentsEnabled: true, teamsEnabled: true, exists: true,
+    parentId: null, gitEnabled: true, agentsEnabled: true, exists: true,
   };
 }
 
@@ -136,7 +136,7 @@ describe("two FORGE installations in one crew", () => {
     const secrets = new Map<string, string>();
     const events: ServerEvent[] = [];
     const sessions = new Map<string, Session>();
-    const started: Array<{ projectId: string; prompt: string; team?: boolean }> = [];
+    const started: Array<{ projectId: string; prompt: string }> = [];
     const proj = project(projectId, dir);
     const dataDir = path.join(t.dir, `data-${name}`);
     mkdirSync(dataDir, { recursive: true });
@@ -188,12 +188,6 @@ describe("two FORGE installations in one crew", () => {
           start: async (pid, prompt) => {
             started.push({ projectId: pid, prompt });
             const s = session(`task-${started.length}`, pid, dir, "Crew-Aufgabe");
-            sessions.set(s.id, s);
-            return s;
-          },
-          startTeam: async (pid, prompt) => {
-            started.push({ projectId: pid, prompt, team: true });
-            const s = { ...session(`team-${started.length}`, pid, dir, "Crew-Team"), team: true };
             sessions.set(s.id, s);
             return s;
           },
@@ -283,12 +277,11 @@ describe("two FORGE installations in one crew", () => {
     b.svc.onServerEvent({ event: "session.event", payload: { seq: 1, sessionId: "sb", ts: "", body: { type: "user.message", text: "Bau die Login-Seite" } } });
     b.svc.onServerEvent({ event: "session.event", payload: { seq: 2, sessionId: "sb", ts: "", body: { type: "tool.use", toolUseId: "t1", name: "Write", input: { file_path: path.join(dirB, "src", "login.tsx") }, parentToolUseId: null } } });
     await waitFor("Ben's agent at Anna", () => crewOf(a.svc)?.members.find((m) => m.id === benId)?.agents.find((x) => x.files.includes("src/login.tsx")));
-    // Ben's session is an agent team: its members work in the background while the lead waits, and the crew sees it working.
-    const benTeam: Session = { ...benSession, team: true, background: [{ taskId: "k1", description: "Formular", taskType: "local_agent", toolUseId: "a1", startedAt: "", summary: null }] };
-    b.sessions.set("sb", benTeam);
-    b.svc.onServerEvent({ event: "session.updated", payload: benTeam });
-    await waitFor("Ben's team at Anna", () => crewOf(a.svc)?.members.find((m) => m.id === benId)?.agents.find((x) => x.status === "working" && x.team?.working === 1));
-    expect(describeCrew(crewOf(a.svc)!)).toMatch(/Agent-Team|agent team/);
+    // Subagents of Ben's session work in the background while the session waits, and the crew sees it working.
+    const benBusy: Session = { ...benSession, background: [{ taskId: "k1", description: "Formular", taskType: "local_agent", toolUseId: "a1", startedAt: "", summary: null }] };
+    b.sessions.set("sb", benBusy);
+    b.svc.onServerEvent({ event: "session.updated", payload: benBusy });
+    await waitFor("Ben's busy session at Anna", () => crewOf(a.svc)?.members.find((m) => m.id === benId)?.agents.find((x) => x.status === "working"));
     expect(describeCrew(crewOf(a.svc)!)).toContain("src/login.tsx");
     const warning = a.svc.editWarning("sa", "Edit", { file_path: path.join(dirA, "src", "login.tsx") });
     expect(warning).toContain("Ben");
@@ -324,12 +317,6 @@ describe("two FORGE installations in one crew", () => {
     await waitFor("Ben is out", () => b.svc.list().length === 0);
     expect(b.events.some((e) => e.event === "crew.notice" && e.payload.kind === "removed")).toBe(true);
     expect(crewOf(again)!.members.map((m) => m.name)).toEqual(["Anna"]);
-
-    // A task can go to an agent team instead of a single session.
-    const big = again.addTask(crewOf(again)!.id, { title: "Suche bauen", detail: "", assignee: null });
-    const r = await again.startTask(crewOf(again)!.id, big.id, true);
-    expect(a.started.at(-1)).toMatchObject({ team: true });
-    expect(r.sessionId).toMatch(/^team-/);
   });
 
   it("lets a member watch another member's session live and take it over with its files and Claude's conversation", { timeout: 90_000 }, async () => {

@@ -28,7 +28,6 @@ import { openExternal } from "@/lib/native";
 import { checkInstall, installFromFile, installFull, installUpdate, supportsFullInstall } from "@/lib/app-install";
 import { call, keys, refreshUsage } from "@/lib/queries";
 import { openDevServer, prepareWorktree } from "@/lib/dev-server-actions";
-import { openTeamStart, setProjectTeams } from "@/lib/agent-teams";
 import { askShare, openCrew, pullCrew } from "@/lib/crew";
 import { EFFORT_LEVELS, modelLabel } from "@/lib/models";
 import { errorMessage, RpcCallError } from "@/lib/rpc";
@@ -137,7 +136,6 @@ const SETTING_TOGGLES: Record<Exclude<BooleanSetting, keyof typeof UNLISTED_SETT
   screenshotKey: { label: t.layout.actions.toggles.screenshotKey, section: "general", keywords: "screenshot bildschirmfoto snipping druck print taste key screen capture" },
   sounds: { label: t.layout.actions.toggles.sounds, section: "general", keywords: "töne ton sound sounds signal klang audio klingel crew anfrage beitritt doorbell request" },
   autoContinueAfterLimit: { label: t.layout.actions.toggles.autoContinueAfterLimit, section: "claude", keywords: "auto weitermachen nutzungslimit limit reset continue usage" },
-  agentTeams: { label: t.layout.actions.toggles.agentTeams, section: "claude", keywords: "agent teams agenten-teams teammitglieder lead claude code experimentell einschalten ausschalten agent teams teammates experimental switch on off" },
   askPushOnClose: { label: t.layout.actions.toggles.askPushOnClose, section: "general", keywords: "schließen beenden pushen push github ungepusht commit andere gerät weiterarbeiten close quit unpushed other device" },
   learnTemplates: { label: t.layout.actions.toggles.learnTemplates, section: "templates", keywords: "prompt vorlagen templates wiederkehrende nachrichten shortcuts textvorschläge selbst anlegen lernen learn automatic recurring messages suggestions" },
   uiCompare: { label: t.layout.actions.toggles.uiCompare, section: "claude", keywords: "screenshot vergleich vorschau dev-server ui oberfläche bild vorher nachher before after compare preview image" },
@@ -552,20 +550,6 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       const file = ui.selectedFile[project.id];
       if (file) act("explorer-file", t.layout.actions.explorerFile, icon(FolderOpen), () => void revealInProject(project.path, file), { keywords: "datei explorer ordner windows file folder show", hint: file });
     }
-    const teamsOn = !!settings?.agentTeams && (root ?? project).teamsEnabled;
-    if (project.exists && teamsOn) {
-      act("team-start", t.layout.actions.teamStart, icon(Users), () => openTeamStart(project.id), {
-        keywords: "agent team agenten-team mitglieder teammates lead orchestrator orchestrieren starten parallel zusammenarbeiten scout entwickler tester reviewer opus sonnet haiku agent teams start spawn collaborate developer",
-      });
-    }
-    if (teamsOn) {
-      act("team-models", t.layout.actions.teamModels, icon(Users), () => ui.openSettings("claude"), {
-        keywords: "agent team modelle rollen scout entwickler spezialist tester reviewer haiku sonnet opus fable einstellen team models roles developer specialist set",
-      });
-      act("team-view", t.layout.actions.teamView, icon(Users), () => ui.setWorkspaceTab("agents"), {
-        keywords: "agent teams agenten-teams anzeigen plan aufgaben mitglieder status übersicht team-board show plan tasks members overview board",
-      });
-    }
     if ((root ?? project).gitEnabled) addCrewActions(ctx, act, (root ?? project).id);
     act("terminal", t.layout.actions.terminal, icon(SquareTerminal), () => ui.openTerminal(project.id, "shell"), { keywords: "terminal shell konsole console" });
     act("bottom", t.layout.actions.bottom, icon(PanelBottom), () => ui.toggleBottomPanel(), { hint: t.layout.actions.ctrl("J"), keywords: "unteres panel einblenden ausblenden bottom panel toggle show hide" });
@@ -612,14 +596,6 @@ export function buildActions(ctx: ActionContext): PaletteEntry[] {
       setting("project-agents", on ? t.projects.agents.menuOff : t.projects.agents.menuOn, icon(on ? ToggleRight : ToggleLeft), () => switchProjectAgents(qc, p, !on), {
         hint: p.name,
         keywords: "parallele agenten keine agenten worktree worktrees ausschalten erlauben nacheinander parallel agents no agents switch off allow sequential",
-      });
-    }
-    if (agentsOwner) {
-      const p = agentsOwner;
-      const on = p.teamsEnabled;
-      setting("project-teams", on ? t.projects.teams.menuOff : t.projects.teams.menuOn, icon(on ? ToggleRight : ToggleLeft), () => void setProjectTeams(qc, p, !on), {
-        hint: p.name,
-        keywords: "agent teams agenten-teams teammitglieder lead claude code ausschalten erlauben projekt agent teams teammates switch off allow project",
       });
     }
     // A worktree is listed under its project, so the group is the main project's.

@@ -92,18 +92,6 @@ export const projects = {
     menuOff: "Parallele Agenten ausschalten",
     menuOn: "Parallele Agenten erlauben",
   },
-  teams: {
-    title: "Agent-Teams",
-    switchLabel: "Agent-Teams erlauben",
-    onDescription: "Im Agenten-Reiter lässt sich ein Agent-Team starten. Jedes Mitglied ist eine eigene Claude-Instanz und verbraucht eigenes Abo-Kontingent.",
-    offDescription: "In diesem Projekt startet FORGE keine Agent-Teams und zeigt keine an.",
-    globalOff: "Agent-Teams sind in den Einstellungen ausgeschaltet. Dort zuerst einschalten.",
-    openSettings: "Zu den Einstellungen",
-    turnedOff: "Agent-Teams ausgeschaltet",
-    turnedOn: "Agent-Teams erlaubt",
-    menuOff: "Agent-Teams ausschalten",
-    menuOn: "Agent-Teams erlauben",
-  },
   card: {
     favoriteNotSaved: "Favorit konnte nicht gespeichert werden",
     newSession: "Neue Session",

@@ -22,7 +22,6 @@ import { KnowledgeStore } from "./knowledge/knowledge.js";
 import { RefChecker } from "./knowledge/staleness.js";
 import { PhoneService } from "./phone/phone-service.js";
 import { JobWatcher } from "./sessions/job-done.js";
-import { AgentTeams } from "./teams/agent-teams.js";
 import { CREW_SECRET_PREFIX, CrewService } from "./crew/crew-service.js";
 import { tokenMeter } from "./claude/token-meter.js";
 import { DictationService } from "./dictation/dictation.js";
@@ -74,7 +73,6 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   let server: RpcServer | null = null;
   let phone: PhoneService | null = null;
   let jobs: JobWatcher | null = null;
-  let teamEvents: AgentTeams | null = null;
   let sync: SyncService | null = null;
   let crew: CrewService | null = null;
   const emit = (e: ServerEvent) => {
@@ -83,7 +81,6 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     server?.emit(e);
     phone?.onServerEvent(e);
     jobs?.onServerEvent(e);
-    teamEvents?.onServerEvent(e);
     sync?.onServerEvent(e);
     crew?.onServerEvent(e);
   };
@@ -169,20 +166,6 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
   const notifyProject = (projectId: string) => emit({ event: "project.updated", payload: { projectId } });
   const agentFinish = new AgentFinisher({ db, git, projects, sessions, worktrees, devServers, notifyProject });
   sessions.useAgentFinisher(agentFinish);
-  const teams = new AgentTeams({
-    db,
-    sessions,
-    projects: () => projects.all(),
-    emit,
-    enabled: (projectId) => {
-      if (!db.getSettings().agentTeams) return false;
-      if (!projectId) return true;
-      const p = db.getProject(projectId);
-      const root = p?.parentId ? db.getProject(p.parentId) : p;
-      return root?.teamsEnabled !== false;
-    },
-  });
-  teamEvents = teams;
   const templates = new TemplateService({
     db,
     rootOf: (projectId) => projects.get(projectId).parentId ?? projectId,
@@ -209,7 +192,6 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     sessions: {
       get: (id) => (db.getSession(id) ? sessions.get(id) : null),
       start: (projectId, prompt) => sessions.start({ projectId, prompt }),
-      startTeam: (projectId, prompt) => teams.start(projectId, prompt),
       busy: (projectId) => sessions.projectBusy(projectId),
     },
     avatar: async () => (await github.account())?.avatarUrl ?? null,
@@ -447,7 +429,6 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
     worktreeSetup,
     agentFinish,
     reports,
-    teams,
     crew,
     devServers,
     devTools,
@@ -479,7 +460,6 @@ export function createApp(opts: { dataDir: string; write: Writer; log?: (m: stri
       await Promise.race([Promise.allSettled([sessions.drain(), Promise.resolve().then(() => phone?.shutdown()), testDb.stopAll(), preview.closeAll()]), limit]);
       clearTimeout(timer);
       sessions.shutdown();
-      teams.shutdown();
       crew?.stop();
       tokenMeter.stop();
       updates.stop();

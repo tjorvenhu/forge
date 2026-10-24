@@ -307,13 +307,11 @@ function TreeRow({ agent, last, m, canWatch, onWatch }: { agent: CrewAgent; last
       <span className="crew-tree-head">
         <span className={`crew-tree-dot crew-tree-dot-${agent.status}`} aria-hidden />
         {agent.branch && <Bot aria-hidden className="crew-accent" />}
-        {agent.team && <Users aria-hidden className="crew-accent" />}
         <span className="crew-ellipsis crew-tree-title">{agent.title}</span>
         {agent.branch && <span className="crew-tree-branch crew-ellipsis">{agent.branch}</span>}
         {canWatch && <Eye aria-hidden className="crew-tree-eye" />}
       </span>
       {line && <span className="crew-tree-line">{line}</span>}
-      {agent.team && agent.team.working > 0 && <span className="crew-tree-line">{m.team(agent.team.working)}</span>}
     </>
   );
   return (

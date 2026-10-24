@@ -33,13 +33,6 @@ import {
   type Settings,
   type UsageWindow,
   SUPPORT_LINKS,
-  mergeTeamRoleModels,
-  modelFamily,
-  parseTeamRoleModels,
-  TEAM_ROLES,
-  teamRoleModel,
-  type AgentTeam,
-  type TeamRoleModels,
 } from "@forge/protocol";
 import type { Db } from "../persistence/db.js";
 import { limitWarning } from "../claude/usage.js";
@@ -497,10 +490,6 @@ function settingText(s: Settings, key: keyof ForgeSettingsPatch | "alwaysOnTop")
       return m.settings.learnTemplates(s.learnTemplates);
     case "askPushOnClose":
       return m.settings.askPushOnClose(s.askPushOnClose);
-    case "agentTeams":
-      return m.settings.agentTeams(s.agentTeams);
-    case "teamRoleModels":
-      return m.settings.teamRoleModels(TEAM_ROLES.map((r) => `${m.teams.role[r] ?? r} ${teamRoleModel(r, s.teamRoleModels)}`).join(", "));
     case "usageStats":
       return m.settings.usageStats(s.usageStats);
     case "debugLogs":
@@ -1626,7 +1615,6 @@ export class PhoneService {
         ...(p.projectFile ? [m.projectFile] : []),
         p.gitEnabled ? m.withGit : m.withoutGit,
         ...(p.parentId || p.agentsEnabled ? [] : [m.withoutAgents]),
-        ...(p.parentId || p.teamsEnabled ? [] : [m.withoutTeams]),
         ...(p.group ? [m.group(p.group)] : []),
       ].join(", ");
     };
@@ -2510,70 +2498,6 @@ export class PhoneService {
           const lost = [o?.force === true && ag.lostChanges, o?.deleteBranch === true && ag.lostBranch].filter(Boolean).join(ag.and);
           return askKeypad(ag.confirmRemove(p.name, lost), removeIt);
         }),
-      agentTeam: (action, o) =>
-        run(true, async () => {
-          const m = tr().phone.teams;
-          const projectName = (id: string) => this.d.projects.all().find((p) => p.id === id)?.name ?? "?";
-          if (action === "start") {
-            if (!o.text?.trim()) return m.needsGoal;
-            const p = findProject(o.project ?? "");
-            let roleModels: TeamRoleModels | undefined;
-            if (o.models?.trim()) {
-              const parsed = parseTeamRoleModels(o.models);
-              if (parsed.invalid.length) return m.badModels(parsed.invalid.join(", "));
-              roleModels = mergeTeamRoleModels((await call("settings.get", {})).teamRoleModels, parsed.models);
-            }
-            const s = await call("teams.start", { projectId: p.id, prompt: o.text.trim(), leadModel: o.leadModel, roleModels });
-            return m.started(p.name, s.model ?? "opus");
-          }
-          const scope = o.project?.trim() ? findProject(o.project) : null;
-          const teams = await call("teams.list", scope ? { projectId: scope.id } : {});
-          if (!teams.length) return scope ? m.noneInProject(scope.name) : m.none;
-          const q = o.team?.trim().toLowerCase();
-          const busy = (t: AgentTeam) => t.live && (t.status === "running" || t.status === "waiting_approval" || t.members.some((x) => x.state === "working"));
-          const pickTeam = () => {
-            const hits = q ? teams.filter((t) => (t.title ?? "").toLowerCase().includes(q)) : teams.filter(busy);
-            return hits.length ? hits : q ? [] : teams.slice(0, 1);
-          };
-          if (action === "stop" || action === "message") {
-            const hits = pickTeam();
-            if (!hits.length) return m.notFound(o.team ?? "");
-            if (hits.length > 1) return m.whichTeam(hits.map((t) => `${t.title ?? "?"} (${projectName(t.projectId)})`).join(", "));
-            const t = hits[0]!;
-            if (action === "stop") {
-              const r = await call("teams.stop", { sessionId: t.sessionId });
-              return m.stopped(t.title ?? "?", r.stopped);
-            }
-            if (!o.text?.trim()) return m.needsText;
-            await call("teams.message", { sessionId: t.sessionId, text: o.text.trim() });
-            return m.sent(t.title ?? "?");
-          }
-          const running = teams.filter(busy);
-          const shown = q ? pickTeam() : running.length ? running : teams.slice(0, 1);
-          return shown
-            .map((t) => {
-              const done = t.tasks.filter((x) => x.status === "completed").length;
-              const tasks = t.tasks.length
-                ? m.tasks(done, t.tasks.length, t.tasks.map((x) => m.task(asData(x.subject), m.taskStatus[x.status] ?? x.status)).join("; "))
-                : m.noTasks;
-              const members = t.members.map(
-                (x) =>
-                  m.member(asData(x.title), (x.role ? m.role[x.role] : null) ?? x.agentType ?? "Agent", modelFamily(x.model) ?? x.model ?? m.leadsModel, m.state[x.state] ?? x.state, x.state === "working" && x.activity ? asData(x.activity) : null) +
-                  (x.tokens ? m.tokens(Math.round(x.tokens / 1000)) : "") +
-                  (x.approval ? m.waitsApproval(x.approval.toolName, x.approval.detail ? asData(x.approval.detail) : null) : ""),
-              );
-              const spent = Object.values(t.models).reduce((n, v) => n + v.inputTokens + v.outputTokens + v.cacheReadTokens + v.cacheWriteTokens, 0);
-              return [
-                m.team(asData(t.title ?? "?"), projectName(t.projectId), modelFamily(t.leadModel) ?? t.leadModel ?? "?", busy(t)),
-                members.length ? m.members(members.join("; ")) : m.noMembers,
-                tasks,
-                spent ? m.spent(Math.round(spent / 1000)) : "",
-              ]
-                .filter(Boolean)
-                .join("\n");
-            })
-            .join("\n\n");
-        }),
       crew: (action, o) =>
         run(true, async () => {
           const m = tr().phone.crew;
@@ -2689,8 +2613,8 @@ export class PhoneService {
             }
             case "task_start": {
               const t = task();
-              await call("crew.taskStart", { crewId: c.id, taskId: t.id, ...(o.team ? { team: true } : {}) });
-              return o.team ? m.taskStartedTeam(t.id) : m.taskStarted(t.id);
+              await call("crew.taskStart", { crewId: c.id, taskId: t.id });
+              return m.taskStarted(t.id);
             }
             case "respond": {
               if (!c.requests.length) return m.noRequests;
@@ -2916,7 +2840,6 @@ export class PhoneService {
             ...(o?.devCommand !== undefined ? { devCommand: o.devCommand.trim() || null } : {}),
             ...(o?.git !== undefined ? { gitEnabled: o.git } : {}),
             ...(o?.agents !== undefined ? { agentsEnabled: o.agents } : {}),
-            ...(o?.teams !== undefined ? { teamsEnabled: o.teams } : {}),
           };
           if (!Object.keys(patch).length) return pj.settings(p.name, projectText(p));
           const next = await call("projects.update", { projectId: p.id, ...patch });
@@ -3176,7 +3099,7 @@ export class PhoneService {
           const cur = await call("settings.get", {});
           const update: Partial<Settings> = {};
           const changed: Array<keyof ForgeSettingsPatch> = [];
-          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare", "learnTemplates", "askPushOnClose", "agentTeams", "usageStats"] as const;
+          const flags = ["sounds", "desktopNotifications", "enterToSend", "autoContinueAfterLimit", "updateChecks", "debugLogs", "stripApiKey", "screenshotKey", "uiCompare", "learnTemplates", "askPushOnClose", "usageStats"] as const;
           for (const k of flags) {
             const v = patch[k];
             if (v === undefined) continue;
@@ -3184,12 +3107,6 @@ export class PhoneService {
             changed.push(k);
           }
           if (patch.usageStats !== undefined) update.usageStatsAsked = true;
-          if (patch.teamRoleModels !== undefined) {
-            const parsed = parseTeamRoleModels(patch.teamRoleModels);
-            if (parsed.invalid.length) return tr().phone.teams.badModels(parsed.invalid.join(", "));
-            update.teamRoleModels = mergeTeamRoleModels(cur.teamRoleModels, parsed.models);
-            changed.push("teamRoleModels");
-          }
           if (patch.defaultModel !== undefined) {
             update.defaultModel = clearable(patch.defaultModel);
             changed.push("defaultModel");

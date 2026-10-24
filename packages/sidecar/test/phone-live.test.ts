@@ -55,7 +55,6 @@ function toolset(calls: string[] = []): PhoneToolset {
     pullRequest: rec("pullRequest"),
     removeAgent: rec("removeAgent"),
     finishAgent: rec("finishAgent"),
-    agentTeam: rec("agentTeam"),
     crew: rec("crew"),
     search: rec("search"),
     ask: rec("ask"),

@@ -81,7 +81,6 @@ import {
   Session,
   SessionEvent,
   Settings,
-  TeamRoleModels,
   SlashCommand,
   SyncProbe,
   SyncStatus,
@@ -91,7 +90,6 @@ import {
   MAX_PROMPT_CHARS,
   UPLOAD_CHUNK_CHARS,
 } from "./models.js";
-import { AgentTeam, TeamLeadModel } from "./team.js";
 import {
   Crew,
   CrewAcceptTasks,
@@ -246,18 +244,6 @@ export const methods = {
   /** merge: rebase the agent's branch onto its target and fast-forward it, then remove worktree and branch; discard: remove both unmerged */
   "agents.finish": { params: projectRef.extend({ action: z.enum(["merge", "discard"]) }), result: AgentFinishResult },
   "sessions.summarize": { params: sessionRef, result: z.object({ summary: z.string(), model: z.string() }) },
-  /** agent teams (sessions with a lead that orchestrates subagents), newest first; projectId: only that project and its worktrees */
-  "teams.list": { params: z.object({ projectId: id.optional() }), result: z.array(AgentTeam) },
-  "teams.get": { params: sessionRef, result: AgentTeam },
-  /** starts a team on a goal: a session whose lead (leadModel, default opus) staffs the team roles */
-  "teams.start": {
-    params: projectRef.extend({ prompt: z.string().min(1).max(MAX_PROMPT_CHARS), leadModel: TeamLeadModel.optional(), roleModels: TeamRoleModels.optional() }),
-    result: Session,
-  },
-  /** a message to the lead (it passes it on to members); starts the lead again when its process ended */
-  "teams.message": { params: sessionRef.extend({ text: z.string().min(1).max(MAX_PROMPT_CHARS) }), result: Session },
-  /** stops the team: the lead's turn and every member still at work; the session stays and can go on */
-  "teams.stop": { params: sessionRef, result: z.object({ stopped: z.number().int() }) },
 
   /** crews of this installation; projectId: the crew of that project (worktrees count to their main project) */
   "crew.list": { params: z.object({ projectId: id.optional() }), result: z.array(Crew) },
@@ -311,8 +297,7 @@ export const methods = {
   },
   "crew.taskRemove": { params: crewRef.extend({ taskId: id }), result: z.object({ ok: z.boolean() }) },
   /** a new session in the crew's project works on the task; the task is taken (in progress, this member) */
-  /** team: an agent team works on it instead of a single session */
-  "crew.taskStart": { params: crewRef.extend({ taskId: id, team: z.boolean().optional() }), result: z.object({ sessionId: z.string() }) },
+  "crew.taskStart": { params: crewRef.extend({ taskId: id }), result: z.object({ sessionId: z.string() }) },
   /** takes over the commits other members pushed (git pull of the project's branch) */
   "crew.pull": { params: crewRef, result: z.object({ output: z.string() }) },
 
@@ -364,7 +349,6 @@ export const methods = {
       devCommand: z.string().max(500).nullable().optional(),
       gitEnabled: z.boolean().optional(),
       agentsEnabled: z.boolean().optional(),
-      teamsEnabled: z.boolean().optional(),
     }),
     result: Project,
   },
@@ -918,9 +902,6 @@ export type ServerEvent =
    */
   /** `sessionIds`: sessions of the worktree, read before the merge removed them (their chat windows close) */
   | { event: "agent.autoMerge"; payload: { rootId: string; worktreeId: string; branch: string | null; outcome: "merged" | "conflict" | "skipped" | "waiting"; message: string; sessionIds: string[] } }
-  /** an agent team changed (members, tasks, messages, ended) */
-  /** a team's members or plan changed (throttled while it works) */
-  | { event: "teams.updated"; payload: { sessionId: string; projectId: string } }
   /** a crew changed (members, their agents, tasks, feed, connection); removed: left or no longer exists */
   | { event: "crew.updated"; payload: { crewId: string; projectId: string; removed?: boolean } }
   /**

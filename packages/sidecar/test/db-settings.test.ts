@@ -95,7 +95,7 @@ describe("language", () => {
   it("stays German for installs that already had projects", () => {
     const db = new Db(file);
     db.insertProject(
-      { id: "p1", name: "p", path: t.dir, favorite: false, tags: [], technologies: [], profile: "balanced", defaultModel: null, defaultEffort: null, createdAt: new Date().toISOString(), lastOpenedAt: null, testCommand: null, devCommand: null, parentId: null, gitEnabled: true, agentsEnabled: true, teamsEnabled: true, group: null },
+      { id: "p1", name: "p", path: t.dir, favorite: false, tags: [], technologies: [], profile: "balanced", defaultModel: null, defaultEffort: null, createdAt: new Date().toISOString(), lastOpenedAt: null, testCommand: null, devCommand: null, parentId: null, gitEnabled: true, agentsEnabled: true, group: null },
       t.dir.toLowerCase(),
     );
     rerunMigration(db);

@@ -29,7 +29,6 @@ import { existsSync, writeFileSync } from "node:fs";
 import { WorktreeService } from "../src/automation/worktrees.js";
 import { AgentFinisher } from "../src/automation/agent-finish.js";
 import { KnowledgeStore } from "../src/knowledge/knowledge.js";
-import { AgentTeams } from "../src/teams/agent-teams.js";
 import type { DevEnvironment } from "../src/devtools/environment.js";
 
 const fixture = readFileSync(path.join(import.meta.dirname, "fixtures", "stream-read-tool.jsonl"), "utf8")
@@ -2305,91 +2304,6 @@ describe("auto-test runs only when needed", () => {
     await svc.start({ projectId, prompt: "x" });
     expect(rt.started[0]!.context).toContain("Tests gezielt ausführen");
     expect(rt.started[0]!.context).toContain("FORGE führt nach jedem Durchlauf selbst „pnpm test“ aus");
-  });
-});
-
-describe("agent teams", () => {
-  const teamsFor = (enabled = true) => new AgentTeams({ db, sessions: svc, projects: () => projects.all(), emit: (e) => emitted.push(e), enabled: () => enabled });
-
-  it("starts the lead on opus with the team roles on their own models and keeps them on resume", async () => {
-    const teams = teamsFor();
-    const s = await teams.start(projectId, "Baue die Suche");
-    expect(s).toMatchObject({ team: true, model: "opus", effort: "high" });
-    const o = rt.started[0]!;
-    expect(o.agents?.["team-scout"]).toMatchObject({ model: "haiku", effort: "low", omitClaudeMd: true, disallowedTools: expect.arrayContaining(["Edit", "Write"]) });
-    expect(o.agents?.["team-developer"]).toMatchObject({ model: "sonnet" });
-    expect(o.agents?.["team-developer"]?.disallowedTools).toBeUndefined();
-    expect(o.agents?.["team-specialist"]).toMatchObject({ model: "opus" });
-    expect(o.agents?.["team-reviewer"]).toMatchObject({ model: "opus", disallowedTools: expect.arrayContaining(["Edit"]) });
-    expect(o.context).toContain("You lead an agent team");
-    // FORGE's own context stays in front of the team rules
-    expect(o.context).toContain("FORGE");
-
-    rt.replay();
-    rt.sinks[0]!.onEnd(null);
-    await svc.resume(s.id, "weiter");
-    expect(rt.started[1]!.agents?.["team-tester"]).toMatchObject({ model: "sonnet" });
-    expect(rt.started[1]!.context).toContain("You lead an agent team");
-
-    const plain = await svc.start({ projectId, prompt: "eine normale Session" });
-    expect(rt.started.at(-1)!.agents).toBeUndefined();
-    expect(rt.started.at(-1)!.context ?? "").not.toContain("You lead an agent team");
-    expect(teams.list(projectId).map((x) => x.sessionId)).toEqual([s.id]);
-    expect(() => teams.get(plain.id)).toThrow();
-  });
-
-  it("keeps the role models of a team from its start, from the settings or the start itself", async () => {
-    db.updateSettings({ teamRoleModels: { reviewer: "sonnet" } });
-    const teams = teamsFor();
-    const a = await teams.start(projectId, "a");
-    expect(rt.started[0]!.agents?.["team-reviewer"]).toMatchObject({ model: "sonnet" });
-    expect(rt.started[0]!.context).toContain("team-reviewer: Team reviewer (Sonnet");
-    const b = await teams.start(projectId, "b", "sonnet", { specialist: "fable" });
-    expect(rt.started[1]!.agents?.["team-specialist"]).toMatchObject({ model: "fable" });
-    expect(rt.started[1]!.agents?.["team-reviewer"]).toMatchObject({ model: "opus" });
-    // a later change of the settings does not move a running team
-    db.updateSettings({ teamRoleModels: {} });
-    rt.replay(0);
-    rt.sinks[0]!.onEnd(null);
-    await svc.resume(a.id, "weiter");
-    expect(rt.started.at(-1)!.agents?.["team-reviewer"]).toMatchObject({ model: "sonnet" });
-    expect(teams.get(b.id).roleModels).toMatchObject({ specialist: "fable", reviewer: "opus", scout: "haiku" });
-  });
-
-  it("lets team members run checks without asking in Balanced, but not other commands or other sessions", async () => {
-    const teams = teamsFor();
-    const s = await teams.start(projectId, "x");
-    const ask = (requestId: string, command: string, i = 0) =>
-      rt.sinks[i]!.onApproval({ requestId, toolUseId: requestId, toolName: "Bash", input: { command }, title: null, description: null, reason: null, suppressAlwaysAllow: false }, new AbortController().signal);
-    await expect(ask("r1", "cd packages/a && pnpm vitest run")).resolves.toEqual({ behavior: "allow", scope: "once" });
-    expect(svc.get(s.id).status).not.toBe("waiting_approval");
-    void ask("r2", "pnpm install");
-    expect(svc.get(s.id).status).toBe("waiting_approval");
-    const audit = db.sql.prepare("SELECT request_id, source, reason FROM approvals WHERE request_id = 'r1'").all();
-    expect(audit).toEqual([{ request_id: "r1", source: "policy", reason: "team-check" }]);
-
-    const plain = await svc.start({ projectId, prompt: "y" });
-    void ask("r3", "pnpm test", 1);
-    expect(svc.get(plain.id).status).toBe("waiting_approval");
-  });
-
-  it("refuses to start a team while teams are switched off", async () => {
-    await expect(teamsFor(false).start(projectId, "x")).rejects.toMatchObject({ code: "TEAMS_DISABLED" });
-    expect(rt.started).toHaveLength(0);
-  });
-
-  it("tells the UI when a team's members change, throttled", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      const teams = teamsFor();
-      const s = await teams.start(projectId, "x");
-      const plain = await svc.start({ projectId, prompt: "y" });
-      for (const id of [s.id, s.id, plain.id]) teams.onServerEvent({ event: "session.event", payload: { seq: 1, sessionId: id, ts: "", body: { type: "tool.use", toolUseId: "a", name: "Agent", input: {}, parentToolUseId: null } } });
-      await vi.advanceTimersByTimeAsync(1_000);
-      expect(emitted.filter((e) => e.event === "teams.updated")).toEqual([{ event: "teams.updated", payload: { sessionId: s.id, projectId } }]);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
 

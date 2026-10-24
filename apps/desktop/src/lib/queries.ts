@@ -70,10 +70,6 @@ export const keys = {
   inspectFolder: (path: string) => ["inspectFolder", path] as const,
   remote: ["remote"] as const,
   agentReview: (id: string) => ["agentReview", id] as const,
-  /** agent teams of a project and its worktrees */
-  agentTeams: (projectId: string) => ["agentTeams", projectId] as const,
-  /** one agent team (its lead's session) */
-  agentTeam: (sessionId: string) => ["agentTeam", sessionId] as const,
   /** crews of a project (its main project's; worktrees share it) */
   crews: (projectId: string) => ["crews", projectId] as const,
   crewProfile: ["crewProfile"] as const,
@@ -365,14 +361,6 @@ export function useRpcMutation<M extends MethodName>(method: M, opts: { onSucces
     onError: (e) => toast.error(opts.errorTitle ?? t.lib.queries.actionFailed, errorMessage(e)),
   });
 }
-
-/** agent teams of a project (teams.updated invalidates; no polling needed). */
-export const useAgentTeams = (projectId: string) =>
-  useQuery({ queryKey: keys.agentTeams(projectId), queryFn: () => call("teams.list", { projectId }), staleTime: 30_000 });
-
-/** one agent team, for the team board over its lead's chat */
-export const useAgentTeam = (sessionId: string | null) =>
-  useQuery({ queryKey: keys.agentTeam(sessionId ?? ""), queryFn: () => call("teams.get", { sessionId: sessionId! }), enabled: !!sessionId, staleTime: 30_000 });
 
 /** Crews of a project; crew.updated invalidates, so no polling. Online states age, a minute keeps them fresh. */
 export const useCrews = (projectId: string | null) =>

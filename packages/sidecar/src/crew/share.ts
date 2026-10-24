@@ -10,7 +10,6 @@ import {
   EffortLevel,
   ForgeError,
   SessionEventBody,
-  TeamRoleModels,
   type CrewShare,
   type CrewShareMode,
   type CrewShareRequest,
@@ -47,8 +46,6 @@ const SharePayload = z.object({
     title: z.string().max(500),
     model: z.string().max(100).nullable(),
     effort: EffortLevel.nullable(),
-    team: z.boolean(),
-    teamModels: TeamRoleModels.nullable(),
   }),
   /** the session's folder on the sharer's computer, to point paths of Claude's conversation here */
   cwd: z.string(),
@@ -420,8 +417,6 @@ export class CrewShares {
       title: `${who}: ${p.session.title}`,
       model: p.session.model,
       effort: p.session.effort,
-      team: p.session.team,
-      ...(p.session.teamModels ? { teamModels: p.session.teamModels } : {}),
       claudeSessionId: null,
       mirror: { crewId: o.crew.id, memberId: o.share.member, memberName: who, remoteSessionId: o.share.agentId, requestId: o.share.id, live: true, at: this.iso() },
       events: p.events,
@@ -483,8 +478,6 @@ export class CrewShares {
       title: m.takenOverTitle(p.session.title, who),
       model: p.session.model,
       effort: p.session.effort,
-      team: p.session.team,
-      ...(p.session.teamModels ? { teamModels: p.session.teamModels } : {}),
       claudeSessionId,
       events: p.events,
     });
@@ -583,7 +576,7 @@ export class CrewShares {
     const payload: SharePayload = {
       v: 1,
       mode,
-      session: { title: s.title ?? "Session", model: s.model, effort: s.effort, team: !!s.team, teamModels: s.teamModels ?? null },
+      session: { title: s.title ?? "Session", model: s.model, effort: s.effort },
       cwd: s.cwd,
       events: this.d.sessions.recentEvents(s.id, Math.min(limit, SHARE_EVENTS_MAX)).filter((b) => b.type !== "assistant.delta"),
       transcript: null,

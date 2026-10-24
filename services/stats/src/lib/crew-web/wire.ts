@@ -31,7 +31,6 @@ export interface CrewAgent {
   lastResult: string | null;
   branch: string | null;
   updatedAt: string;
-  team?: { working: number } | null;
 }
 
 export interface Presence {
@@ -166,7 +165,7 @@ export function isCard(v: unknown): v is MemberCard {
 function isAgent(v: unknown): v is CrewAgent {
   return (
     isObj(v) && str(v.id) && str(v.title) && (v.status === "working" || v.status === "waiting" || v.status === "idle") && strOrNull(v.task) && strs(v.files) &&
-    strOrNull(v.lastResult) && strOrNull(v.branch) && str(v.updatedAt) && (v.team === undefined || v.team === null || (isObj(v.team) && int(v.team.working)))
+    strOrNull(v.lastResult) && strOrNull(v.branch) && str(v.updatedAt)
   );
 }
 

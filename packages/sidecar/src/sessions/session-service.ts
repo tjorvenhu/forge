@@ -18,7 +18,6 @@ import type {
   SessionEventBody,
   SessionUsage,
   SlashCommand,
-  TeamRoleModels,
 } from "@forge/protocol";
 import { ForgeError, idleClosedDetail } from "@forge/protocol";
 import { transcriptImages, transcriptToolImages } from "../claude/attachments.js";
@@ -516,7 +515,6 @@ ${crew.context}` } : own;
       createdAt: now,
       updatedAt: now,
       lastError: null,
-      ...(o.team ? { team: true, ...(o.teamModels ? { teamModels: o.teamModels } : {}) } : {}),
       ...(o.mirror ? { mirror: o.mirror } : {}),
     };
     this.db.insertSession(rec);
@@ -905,8 +903,6 @@ export interface CopyImport {
   title: string;
   model: string | null;
   effort: EffortLevel | null;
-  team?: boolean;
-  teamModels?: TeamRoleModels;
   /** takeover: Claude's conversation, imported under this id */
   claudeSessionId: string | null;
   mirror?: CrewMirror;

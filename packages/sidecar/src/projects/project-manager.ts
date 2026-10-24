@@ -164,7 +164,6 @@ export class ProjectManager {
       parentId,
       gitEnabled,
       agentsEnabled: true,
-      teamsEnabled: true,
     };
     this.db.insertProject(rec, key);
     return this.withExists(rec);
@@ -200,7 +199,7 @@ export class ProjectManager {
 
   update(
     id: string,
-    patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "group" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand" | "devCommand" | "gitEnabled" | "agentsEnabled" | "teamsEnabled">>,
+    patch: Partial<Pick<ProjectRecord, "name" | "favorite" | "group" | "tags" | "profile" | "defaultModel" | "defaultEffort" | "testCommand" | "devCommand" | "gitEnabled" | "agentsEnabled">>,
   ): Project {
     const cur = this.get(id);
     if (patch.group) patch = { ...patch, group: this.groupSpelling(patch.group, id) };
@@ -211,7 +210,6 @@ export class ProjectManager {
       }
     }
     if (patch.agentsEnabled !== undefined && cur.parentId) throw new ForgeError("CONFLICT", tr().system.projects.worktreeAgents);
-    if (patch.teamsEnabled !== undefined && cur.parentId) throw new ForgeError("CONFLICT", tr().system.projects.worktreeTeams);
     const sandboxOnly = (patch.tags ?? cur.tags).includes(SANDBOX_ONLY_TAG);
     if (patch.profile === "autonomous" && sandboxOnly) {
       throw new ForgeError("POLICY_DENIED", tr().system.projects.sandboxOnly);
